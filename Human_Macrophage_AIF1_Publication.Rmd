@@ -1,0 +1,177 @@
+---
+title: Mechanical regulation of macrophage metabolism by Allograft Inflammatory Factor 1 leads to adverse remodeling after cardiac injury
+author: "Matthew DeBerge, Kristofor Glinton, Connor Lantz, Edward B Thorp, et. al"
+date: "11/04/2024"
+output: html_document
+---
+
+# Loading R Packages and Single-Cell Data
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE)
+```
+
+### Set Working Directory and Load Packages
+```{r}
+setwd("/projects/p31275/Lantz/R/Human_Mac_Metabolism/AIF1 Myocardial Infarction")
+```
+
+### Load Packages for Analyses
+```{r packages, message=FALSE, warning=FALSE, include=FALSE}
+library(pkgbuild)
+library(ggplot2)
+library(dplyr)
+library(Matrix)
+library(sctransform)
+library(cowplot)
+library(Seurat)
+library(umap)
+library(RCurl)
+library(scales)
+library(tidyverse)
+library(RColorBrewer)
+library(gridExtra)
+library(EnhancedVolcano)
+library(Signac)
+options(future.globals.maxSize= 5001289600)
+```
+
+```{r}
+Human_MI <- readRDS("/projects/p31275/Lantz/R/Human_Mac_Metabolism/Myeloid_snRNA_snATAC.Rds")
+Ischemic_only <- readRDS("/projects/p31275/Lantz/R/Human_Mac_Metabolism/AIF1 Myocardial Infarction/Ishemic_snRNAseq_only.rds")
+```
+
+# Normalization and Scaling of Data
+```{r}
+DefaultAssay(Ischemic_only) <- "RNA"
+Ischemic_only <- NormalizeData(Ischemic_only)
+all.genes <- rownames(Ischemic_only)
+Ischemic_only <- ScaleData(Ischemic_only, features = all.genes)
+```
+# Figure 1A: UMAP of Cell Types
+```{r}
+Idents(Ischemic_only) <- "cell_type_original"
+
+Cell_levels <- c("Cardiomyocyte", "Cycling cells", "Endothelial", "Fibroblast", "Lymphoid", "Myeloid", "Neuronal", "Pericyte", "vSMCs")
+
+Ischemic_only$cell_type_original <- factor(Ischemic_only$cell_type_original, levels = Cell_levels)
+
+
+cols.use <- c("salmon", "darkorchid3", "firebrick3", "forestgreen", "deeppink3", "dodgerblue4", "darkorange", "seagreen3", "darkseagreen1")
+
+
+Dimplot_Human_MI <- DimPlot(Ischemic_only, reduction = "umap", label = F, cols = cols.use) + guides(color = guide_legend(override.aes = list(size=4), ncol=1)) +
+  labs(x = element_blank(), y = element_blank()) +
+  theme_void() +
+  theme(axis.title.x = element_text(hjust = 0.09, vjust = 3.25, face = "bold", family = "Helvetica", size = rel(1.5)),
+        axis.title.y = element_text(hjust = 0.10, vjust = -3.35, angle=90, face = "bold", family = "Helvetica", size = rel(1.5)),
+        legend.text = element_text(face = "bold", family = "Helvetica", size = rel(1.2)),
+        legend.text.align = 0) 
+Dimplot_Human_MI
+```
+# Figure 1B: Feature Plots of Macrophage Markers
+```{r}
+DefaultAssay(Ischemic_only) <- "RNA"
+
+features.markers <- c("ENSG00000177575", "ENSG00000203747", "ENSG00000133800", "ENSG00000204472")
+
+FeaturePlot_Cell_Markers <- FeaturePlot(Ischemic_only, reduction = "umap", slot = "data", features = features.markers, order = T, cols = c("gray89", "firebrick4"), min.cutoff = ("q0"), max.cutoff = ("q75"), combine = F)
+
+for(i in 1:length(FeaturePlot_Cell_Markers)) {
+  FeaturePlot_Cell_Markers[[i]] <- FeaturePlot_Cell_Markers[[i]] + 
+  guides(color = guide_legend(override.aes = list(size=4), ncol=1)) +
+  theme(plot.title = element_text(hjust = 0.5, face = "bold.italic", family = "Helvetica", size = rel(2.25)),
+        axis.ticks = element_blank(), axis.text = element_blank(), axis.title = element_blank(), axis.line = element_blank()) +
+  NoLegend()
+}
+
+FeaturePlot_Cell_Markers <- cowplot::plot_grid(plotlist = FeaturePlot_Cell_Markers, ncol = 4)
+FeaturePlot_Cell_Markers
+```
+```{r eval=FALSE, include=FALSE}
+ggsave(filename = "PLTP_FeaturePlot.tiff", plot = FeaturePlot_Cell_Markers, path = "/projects/p31275/Lantz/R/Human_Mac_Metabolism/AIF1 Myocardial Infarction", device = "tiff", dpi = 600, width = 9, height = 5, units = "in", compression = "lzw")
+```
+
+# Figure 1C: Violin Plot of AIF1 Expression
+```{r}
+Idents(Ischemic_only) <- "cell_type_original"
+DefaultAssay(Ischemic_only) <- "RNA"
+
+features.vln <- c("ENSG00000177575", "ENSG00000203747", "ENSG00000133800", "ENSG00000204472")
+
+cols.use <- c("salmon", "darkorchid3", "firebrick3", "forestgreen", "deeppink3", "dodgerblue4", "darkorange", "seagreen3", "darkseagreen1")
+
+VlnPlot <- VlnPlot(Ischemic_only, features = features.vln, pt.size = 0.4, cols = cols.use, combine = F)
+for(i in 1:length(VlnPlot)) {
+  VlnPlot[[i]] <- VlnPlot[[i]] + labs(title = features.vln[[i]], y = "Expression") + 
+    theme(plot.title = element_text(face = "bold.italic", family = "Helvetica", size = rel(3)), 
+          axis.title.x = element_blank(), 
+          axis.title.y = element_text(face = "bold", family = "Helvetica", size = rel(1.7)),
+          axis.text.y = element_blank(), axis.ticks.y = element_blank(),
+          axis.line = element_line(linewidth = rel(2))) + 
+    NoLegend() +
+    geom_jitter(mapping = aes(color = ident), data =  VlnPlot[[i]]$data, position = position_jitterdodge(jitter.width = 5.4, dodge.width = 0)) +
+    scale_color_manual(values = cols.use)
+}
+VlnPlot <- cowplot::plot_grid(plotlist = VlnPlot, ncol = 4)
+VlnPlot
+```
+# Figure 1D: Ridge Plot of AIF1 expression 
+```{r}
+Idents(Human_MI) <- "patient"
+Human_MI <- subset(Human_MI, idents = c("P1"), invert = T)
+
+Idents(Human_MI) <- "patient_region_id"
+Human_MI <- RenameIdents(Human_MI, "control_P7" = "Control", "control_P8" = "Control", "control_P17" = "Control", "IZ_P3" = "Ischemic Zone (1-4d)", "GT/IZ_P9" = "Ischemic Zone (1-4d)", "GT/IZ_P9_rep2" = "Ischemic Zone (1-4d)", "IZ_P16" = "Ischemic Zone (1-4d)", "IZ_P10" = "Ischemic Zone (5d+)", "IZ_P15" = "Ischemic Zone (5d+)", "GT/IZ_P15" = "Ischemic Zone (5d+)",  "GT/IZ_P13" = "Ischemic Zone (5d+)", "RZ/BZ_P3" = "Border Zone", "RZ/BZ_P2" = "Border Zone", "RZ/BZ_P12" = "Border Zone", "RZ_P3" = "Remote Zone", "RZ_P9" = "Remote Zone", "RZ_P6" = "Remote Zone", "RZ/GT_P2" = "Remote Zone", "RZ_P11" = "Remote Zone", "FZ/GT_P19" = "Fibrotic Zone", "FZ_P14" = "Fibrotic Zone", "FZ/GT_P4" = "Fibrotic Zone", "RZ/FZ_P5" = "Fibrotic Zone", "FZ_P18" = "Fibrotic Zone", "FZ_P20" = "Fibrotic Zone")
+Human_MI$Generic.Region <- Idents(Human_MI)
+
+Human_MI_AIF1 <- subset(Human_MI, RNA_AIF1 > 0.1)
+
+Idents(Human_MI_AIF1) <- "Generic.Region"
+
+regions <- c("Ischemic Zone (5d+)", "Ischemic Zone (1-4d)", "Border Zone", "Fibrotic Zone", "Remote Zone" , "Control")
+
+Human_MI_AIF1$Generic.Region <- factor(Human_MI_AIF1$Generic.Region, levels = regions)
+
+Human_MI_AIF1_Ischemic_5d <- subset(Human_MI_AIF1, idents = c("Ischemic Zone (5d+)", "Remote Zone" , "Control"))
+```
+
+```{r}
+Idents(Human_MI_AIF1_Ischemic_5d) <- "Generic.Region"
+DefaultAssay(Human_MI_AIF1_Ischemic_5d) <- "RNA"
+RidgePlot <- RidgePlot(Human_MI_AIF1_Ischemic_5d, features = "RNA_AIF1", cols = c("firebrick4", "dodgerblue4", "gray30")) + 
+  geom_vline(xintercept = 1.4,  size= 1.0) +
+  NoLegend() +
+  xlab("Expression") +
+  ylab("Region") +
+  theme(plot.title = element_text(hjust = 0.5, face = "bold.italic", family = "Helvetica", size = rel(2.5)),
+        axis.title.x = element_text(hjust = 0.5, vjust = 1.0, face = "bold", family = "Helvetica", size = rel(1.8)),
+        axis.title.y = element_text(hjust = 0.0, vjust = 1.0, angle=90, face = "bold", family = "Helvetica", size = rel(1.8)),
+        axis.text = element_text(face = "bold", family = "Helvetica", size = rel(1.2)),
+        axis.line.x = element_line(color = "black", linewidth = 1),
+        axis.ticks.x = element_line(color = "black", linewidth = 1))
+
+RidgePlot
+```
+# Figure 1E: Determination of DEGense for GO (gProfiler)
+```{r}
+# search for the gene in the expression matrix
+grep('^ENSG00000204472', rownames(Ischemic_only@assays$RNA@data), value = FALSE)
+
+
+length(which(Ischemic_only@assays$RNA@data[rownames(Ischemic_only@assays$RNA@data)[3196], ] > 0.1))
+
+Ischemic_only@meta.data$AIF1_status <- 'Neg'
+Ischemic_only@meta.data$AIF1_status[which(Ischemic_only@assays$RNA@data[rownames(Ischemic_only@assays$RNA@data)[3196], ] > 0.1)] <- 'Pos'
+```
+
+```{r}
+DefaultAssay(Ischemic_only) <- "RNA"
+Idents(Ischemic_only) <- "AIF1_status"
+DE_GENES <- FindMarkers(Ischemic_only, ident.1 = c("Pos"), ident.2 = c("Neg"), test.use = "MAST", verbose = FALSE)
+
+
+DE_GENES_sig <- subset(DE_GENES, DE_GENES$p_val_adj < 0.05)
+DE_GENES_sig$gene <- row.names(DE_GENES_sig)
+
+write.csv(DE_GENES_sig, file = "/projects/p31275/Lantz/R/Human_Mac_Metabolism/DEGenes_Ischemic_only_AIF1_Pos.csv")
+```
